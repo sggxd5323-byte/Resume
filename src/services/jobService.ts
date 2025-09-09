@@ -1,31 +1,5 @@
-// Job Service
-export interface Job {
-  id: string;
-  title: string;
-  company: string;
-  location: string;
-  type: string;
-  experience: string;
-  salary: string;
-  description: string;
-  requirements: string[];
-  posted: string;
-  url: string;
-  logo: string;
-  remote: boolean;
-  skills: string[];
-  application_link?: string;
-  created_at?: string;
-  job_type?: string;
-}
-
-export interface JobFilters {
-  location?: string;
-  type?: string;
-  experience?: string;
-  remote?: boolean;
-  skills?: string[];
-}
+// Job Service - Now integrated with local storage
+import { jobStorage, Job, JobFilters } from './jobStorageService';
 
 const API_BASE_URL = 'https://dts-providers-few-ala.trycloudflare.com';
 
@@ -46,14 +20,13 @@ const setCachedData = (key: string, data: any) => {
 };
 
 // Main job search function
-export const searchJobs = async (query: string = '', filters: JobFilters = {}): Promise<Job[]> => {
-  const cacheKey = `search-${query}-${JSON.stringify(filters)}`;
-  const cachedResult = getCachedData(cacheKey);
-  
-  if (cachedResult) {
-    return cachedResult;
+export const searchJobs = async (query: string = '', filters: JobFilters = {}, forceAPI: boolean = false): Promise<Job[]> => {
+  // If not forcing API call, return from local storage
+  if (!forceAPI) {
+    return jobStorage.getFilteredJobs(query, filters);
   }
 
+  // Try to fetch from API and sync to local storage
   try {
     const response = await fetch(`${API_BASE_URL}/jobs`, {
       method: 'GET',
@@ -68,120 +41,45 @@ export const searchJobs = async (query: string = '', filters: JobFilters = {}): 
     }
 
     const data = await response.json();
-    let jobs = normalizeJobData(Array.isArray(data) ? data : (data.jobs || data.data || []));
+    const apiJobs = Array.isArray(data) ? data : (data.jobs || data.data || []);
     
-    // Apply client-side filtering
-    jobs = applyFilters(jobs, query, filters);
+    // Sync with local storage
+    jobStorage.syncJobsFromAPI(apiJobs);
     
-    setCachedData(cacheKey, jobs);
-    return jobs;
+    // Return filtered results from local storage
+    return jobStorage.getFilteredJobs(query, filters);
   } catch (error) {
     console.error('Error fetching jobs:', error);
-    // Return empty array if API fails
-    return [];
+    // Return from local storage if API fails
+    return jobStorage.getFilteredJobs(query, filters);
   }
 };
 
 // Get job details by ID
 export const getJobById = async (jobId: string): Promise<Job | null> => {
-  const cacheKey = `job-${jobId}`;
-  const cachedResult = getCachedData(cacheKey);
-  
-  if (cachedResult) {
-    return cachedResult;
-  }
-
-  try {
-    const response = await fetch(`${API_BASE_URL}/jobs`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`API Error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    const job = normalizeJobData([data])[0] || null;
-    
-    if (job) {
-      setCachedData(cacheKey, job);
-    }
-    
-    return job;
-  } catch (error) {
-    console.error('Error fetching job details:', error);
-    return null;
-  }
-};
-
-// Apply client-side filtering
-const applyFilters = (jobs: Job[], query: string, filters: JobFilters): Job[] => {
-  return jobs.filter(job => {
-    // Search query filter
-    if (query) {
-      const searchTerm = query.toLowerCase();
-      const searchableText = `${job.title} ${job.company} ${job.description} ${job.skills.join(' ')}`.toLowerCase();
-      if (!searchableText.includes(searchTerm)) {
-        return false;
-      }
-    }
-    
-    // Location filter
-    if (filters.location && !job.location.toLowerCase().includes(filters.location.toLowerCase())) {
-      return false;
-    }
-    
-    // Job type filter
-    if (filters.type && job.type !== filters.type) {
-      return false;
-    }
-    
-    // Experience filter
-    if (filters.experience && !job.experience.toLowerCase().includes(filters.experience.toLowerCase())) {
-      return false;
-    }
-    
-    // Remote filter
-    if (filters.remote !== undefined && job.remote !== filters.remote) {
-      return false;
-    }
-    
-    // Skills filter
-    if (filters.skills && filters.skills.length > 0) {
-      const hasMatchingSkill = filters.skills.some(skill => 
-        job.skills.some(jobSkill => 
-          jobSkill.toLowerCase().includes(skill.toLowerCase())
-        )
-      );
-      if (!hasMatchingSkill) {
-        return false;
-      }
-    }
-    
-    return true;
-  });
+  return jobStorage.getJobById(jobId);
 };
 
 // Get recommended jobs (now just returns all jobs since no login required)
 export const getRecommendedJobs = async (skills: string[], experience?: string): Promise<Job[]> => {
   // Since no login required, just return filtered jobs based on skills
-  return searchJobs('', { skills });
+  return jobStorage.getFilteredJobs('', { skills });
 };
 
 // Get job market analytics
 export const getJobMarketAnalytics = async () => {
   try {
-    const jobs = await searchJobs();
+    const jobs = jobStorage.getAllJobs();
+    const stats = jobStorage.getJobStats();
     return {
-      totalJobs: jobs.length,
+      totalJobs: stats.total,
       trendingSkills: extractTrendingSkills(jobs),
       topCompanies: extractTopCompanies(jobs),
-      averageSalary: 'Competitive',
-      growthRate: '15%'
+      averageSalary: '₹12-25 LPA',
+      growthRate: '15%',
+      remoteJobs: stats.remoteJobs,
+      companies: stats.companies,
+      locations: stats.locations
     };
   } catch (error) {
     console.error('Error fetching market analytics:', error);
@@ -235,46 +133,6 @@ export const recordUserJobSearch = async (query: string, location?: string) => {
   }
 };
 
-// Normalize job data from API response
-const normalizeJobData = (jobs: any[]): Job[] => {
-  return jobs.map((job: any, index: number) => ({
-    id: job.id || `job-${index}-${Date.now()}`,
-    title: job.title || 'Job Position',
-    company: job.company || 'Company',
-    location: job.location || 'Location',
-    type: job.job_type || job.type || 'full-time',
-    experience: job.experience || job.experience_level || 'Not specified',
-    salary: job.salary || job.salary_range || 'Competitive',
-    description: job.description || 'No description available',
-    requirements: job.requirements || job.skills || [],
-    posted: job.created_at ? formatDate(job.created_at) : 'Recently',
-    url: job.application_link || job.url || '#',
-    logo: job.logo || job.company_logo || '',
-    remote: job.remote || job.is_remote || false,
-    skills: job.skills || job.requirements || [],
-    application_link: job.application_link,
-    created_at: job.created_at,
-    job_type: job.job_type
-  }));
-};
-
-// Format date helper
-const formatDate = (dateString: string): string => {
-  try {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffTime = Math.abs(now.getTime() - date.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 1) return '1 day ago';
-    if (diffDays < 7) return `${diffDays} days ago`;
-    if (diffDays < 30) return `${Math.ceil(diffDays / 7)} weeks ago`;
-    return `${Math.ceil(diffDays / 30)} months ago`;
-  } catch (error) {
-    return 'Recently';
-  }
-};
-
 // Share job function
 export const shareJob = (job: Job): void => {
   const shareUrl = `${window.location.origin}/job/${job.id}`;
@@ -300,3 +158,6 @@ export const shareJob = (job: Job): void => {
     });
   }
 };
+
+// Export re-exports for compatibility
+export { Job, JobFilters } from './jobStorageService';

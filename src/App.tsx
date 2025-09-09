@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
 import LoadingScreen from './components/LoadingScreen';
 import AIAssistant from './components/AIAssistant';
@@ -10,10 +11,11 @@ import Portfolio from './components/Portfolio';
 import CareerPortal from './components/CareerPortal';
 import AuthModal from './components/AuthModal';
 import Footer from './components/Footer';
+import AdminRoute from './components/AdminRoute';
 import { ResumeData } from './utils/pdfGenerator';
 import { Toaster } from 'react-hot-toast';
 
-function App() {
+const MainApp: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [resumeData, setResumeData] = useState<ResumeData | undefined>();
@@ -73,7 +75,7 @@ function App() {
   };
 
   return (
-    <ThemeProvider>
+    <>
       <LoadingScreen 
         isLoading={isLoading} 
         progress={loadingProgress}
@@ -117,6 +119,20 @@ function App() {
           onLogin={handleLogin}
         />
       </div>
+    </>
+  );
+};
+
+function App() {
+  return (
+    <ThemeProvider>
+      <Router>
+        <Routes>
+          <Route path="/" element={<MainApp />} />
+          <Route path="/admin" element={<AdminRoute />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Router>
     </ThemeProvider>
   );
 }

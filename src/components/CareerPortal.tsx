@@ -29,9 +29,11 @@ import {
   Calendar,
   Award as AwardIcon,
   Code,
-  Layers
+  Layers,
+  Settings
 } from 'lucide-react';
-import { searchJobs, getJobMarketAnalytics, Job } from '../services/jobService';
+import { searchJobs, getJobMarketAnalytics } from '../services/jobService';
+import { jobStorage, Job, JobStorageService } from '../services/jobStorageService';
 import toast from 'react-hot-toast';
 
 interface JobViewModalProps {
@@ -321,23 +323,32 @@ const CareerPortal: React.FC = () => {
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [showJobModal, setShowJobModal] = useState(false);
   const [marketAnalytics, setMarketAnalytics] = useState<any>(null);
+  const [showAdminHint, setShowAdminHint] = useState(false);
 
   useEffect(() => {
     loadJobs();
     loadSavedJobs();
     loadMarketAnalytics();
+    
+    // Try to sync with API on initial load
+    syncWithAPI();
   }, []);
 
   const loadJobs = async () => {
-    setLoading(true);
+    // Load jobs from local storage
+    const results = jobStorage.getFilteredJobs(searchQuery, filters);
+    setJobs(results);
+  };
+
+  const syncWithAPI = async () => {
     try {
-      const results = await searchJobs(searchQuery, filters);
-      setJobs(results);
+      // Try to fetch from API and sync to local storage
+      await searchJobs('', {}, true); // Force API call
+      loadJobs(); // Reload from local storage
+      loadMarketAnalytics();
     } catch (error) {
-      console.error('Error loading jobs:', error);
-      setJobs([]);
-    } finally {
-      setLoading(false);
+      console.error('API sync failed, using local storage:', error);
+      // Jobs are already loaded from local storage, so no action needed
     }
   };
 
@@ -370,7 +381,7 @@ const CareerPortal: React.FC = () => {
   };
 
   const handleSearch = async () => {
-    await loadJobs();
+    loadJobs(); // Search in local storage
   };
 
   const toggleSaveJob = (jobId: string) => {
@@ -739,6 +750,25 @@ const CareerPortal: React.FC = () => {
                 className="w-full pl-12 pr-4 py-4 border border-gray-200 dark:border-gray-600 rounded-2xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm text-lg"
                 onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
               />
+              
+              {/* Admin Access Hint */}
+              <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
+                <button
+                  onClick={() => setShowAdminHint(!showAdminHint)}
+                  className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                  title="Admin access"
+                >
+                  <Settings className="w-5 h-5" />
+                </button>
+                
+                {showAdminHint && (
+                  <div className="absolute right-0 top-12 bg-white dark:bg-gray-800 rounded-lg shadow-lg p-3 border border-gray-200 dark:border-gray-700 z-10">
+                    <p className="text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                      Admin access: /admin
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Filters */}
@@ -876,7 +906,7 @@ const CareerPortal: React.FC = () => {
         </AnimatePresence>
 
         {/* Enhanced No Results */}
-        {!loading && (
+        {(
           (activeTab === 'search' && jobs.length === 0) ||
           (activeTab === 'saved' && savedJobs.length === 0)
         ) && (
@@ -914,7 +944,7 @@ const CareerPortal: React.FC = () => {
                     remote: undefined,
                     skills: []
                   });
-                  handleSearch();
+                  loadJobs();
                 }}
                 className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-4 rounded-2xl font-semibold hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg hover:shadow-xl"
               >

@@ -5,11 +5,10 @@ import { X, Mail, Lock, User, Eye, EyeOff } from 'lucide-react';
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onLogin: (email: string, password: string) => void;
-  onSignup: (email: string, password: string, name: string) => void;
+  onLogin: (userData: any) => void;
 }
 
-const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, onSignup }) => {
+const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
   const [isLoginMode, setIsLoginMode] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,11 +21,16 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, onSignu
     setIsLoading(true);
 
     try {
-      if (isLoginMode) {
-        await onLogin(email, password);
-      } else {
-        await onSignup(email, password, name);
-      }
+      // Simulate authentication
+      const userData = {
+        email,
+        name: isLoginMode ? email.split('@')[0] : name,
+        avatar: null
+      };
+      
+      // Save user data
+      localStorage.setItem('user', JSON.stringify(userData));
+      onLogin(userData);
       onClose();
     } catch (error) {
       console.error('Auth error:', error);
