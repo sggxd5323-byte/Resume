@@ -1,7 +1,7 @@
 // Job Service - Now integrated with local storage
 import { jobStorage, Job, JobFilters } from './jobStorageService';
 
-const API_BASE_URL = '';
+const API_BASE_URL = 'https://trinidad-turner-install-zus.trycloudflare.com';
 
 // Cache for API responses
 const cache = new Map<string, { data: any; timestamp: number }>();
